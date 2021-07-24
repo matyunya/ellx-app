@@ -11,8 +11,7 @@ import postcssConfig from './postcss.config';
 const production = process.env.NODE_ENV === 'production';
 
 const env = {
-  'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-  // 'process.env.API_URL': JSON.stringify(process.env.API_URL || 'https://' + (production ? '' : 'test-') + 'api.ellx.io'),
+  'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'staging'),
 };
 
 const makeSandbox = {
@@ -33,23 +32,26 @@ const makeSandbox = {
   }
 };
 
-const svelteConfig = ({ purgePaths }) => {
+const svelteOptions = {
+  extensions: ['.svelte'],
+  compilerOptions: {
+    dev: !production,
+    hydratable: false,
+    immutable: true,
+    css: false
+  }
+}
+
+const withPreprocess = ({ purgePaths }) => {
   const config = {
-    extensions: ['.svelte'],
+    ...svelteOptions,
     preprocess: sveltePreprocess({
       postcss: postcssConfig(
         purgePaths,
         production
       )
     }),
-    compilerOptions: {
-      dev: !production,
-      hydratable: false,
-      immutable: true,
-      css: false
-    }
   };
-
   return config;
 };
 
@@ -69,7 +71,7 @@ export default [
       }),
       commonjs(),
 
-      svelte(svelteConfig({
+      svelte(withPreprocess({
         purgePaths: [
           'src/sandbox/components/*',
         ]
@@ -85,5 +87,22 @@ export default [
       format: 'es',
       dir: 'dist',
     },
+  },
+  {
+    input: 'src/runtime.js',
+    plugins: [
+      modify(env),
+      resolve({ browser: true }),
+      commonjs(),
+
+      svelte(svelteOptions),
+      production && terser()
+    ],
+    output: {
+      sourcemap: !production,
+      format: 'iife',
+      name: 'Runtime',
+      dir: 'dist',
+    }
   }
 ];

@@ -12,6 +12,9 @@ import { readFile } from 'fs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 import { startDevPipe } from './dev_pipe.js';
+import { deploy } from './deploy.js';
+
+import { conclude } from 'conclure';
 
 const publicDir = join(__dirname, '../dist');
 
@@ -36,15 +39,10 @@ if (mainOptions.command === 'start') {
 
   polka({ server })
     .use(serve(publicDir))
-    .get('*', function (req, res) {
-      readFile(resolve(publicDir, 'index.html'), (err, data) => {
-        if (err) {
-          console.error('Error reading index.html', err);
-        } else {
-          res.end(data);
-        }
-      })
-    })
+    .get('*', (req, res, next) => readFile(join(publicDir, 'index.html'), 'utf8', (error, body) => {
+      if (error) next(error);
+      else res.end(body);
+    }))
     .listen(config.port, err => {
       if (err) throw err;
       console.log(`> Running on localhost:${config.port}`);
@@ -54,12 +52,23 @@ if (mainOptions.command === 'start') {
 
   wss.on('connection', ws => startDevPipe(ws, process.cwd()));
 }
+else if (mainOptions.command === 'deploy') {
+  const deployDefinitions = [
+    { name: 'env', defaultOption: true, default: process.env.NODE_ENV || 'staging', type: String }
+  ];
+
+  const config = commandLineArgs(deployDefinitions, { argv });
+
+  conclude(deploy(process.cwd(), config.env), (err) => {
+    if (err) console.error(err);
+  });
+}
 else {
   console.log(`Please specify a command:
     start
     login (WIP)
     publish (WIP)
-    deploy (WIP)
+    deploy
   `);
   process.exit(1);
 }

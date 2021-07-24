@@ -5,11 +5,18 @@ import { asyncCell } from './engine/reactive_cell';
 import { STALE_REQUIRE } from './engine/quack';
 import { conclude } from 'conclure';
 
-function evalUMD(code) {
-  return new Function('module', 'exports', 'process', 'global', 'require', code);
+function evalUMD(id, code) {
+  const script = document.createElement('script');
+  script.id = id;
+  script.append(`//@ sourceURL=${id}\nwindow["${id}"] = function(module, exports, process, global, require){\n${code}\n}`);
+  document.body.append(script);
+
+  const result = window[id];
+  delete window[id];
+  return result;
 }
 
-function instantiateModule(node, _require) {
+function instantiateModule(node, _require, environment) {
   const instantiate = node.code;
 
   const module = node.code = {
@@ -18,7 +25,7 @@ function instantiateModule(node, _require) {
 
   const process = {
     env: {
-      NODE_ENV: 'production'
+      NODE_ENV: environment
     },
     cwd: () => '.'
   };
@@ -39,7 +46,8 @@ function instantiateModule(node, _require) {
 export default (options = {}) => {
   const {
     graph = {},
-    logger = console.debug
+    logger = console.debug,
+    environment
   } = options;
 
   const fetchFromJSDelivr = getFetchFromJSDelivr(graph, logger);
@@ -80,7 +88,7 @@ export default (options = {}) => {
     }
 
     if (typeof code !== 'function') {
-      node.code = evalUMD(code);
+      node.code = evalUMD(id, code);
     }
 
     // Check static dependencies are present
@@ -94,11 +102,15 @@ export default (options = {}) => {
       }
     }
 
-    instantiateModule(node, p => requireModule(p, id));
+    instantiateModule(node, p => requireModule(p, id), environment);
     return node.code.exports;
   }
 
-  requireModule.hydrate = (dependencies, cb) => conclude(all(dependencies.map(id => loadModule(id))), cb);
+  requireModule.hydrate = (cb) => conclude(all(
+    Object.keys(graph)
+      .filter(id => !id.includes('=>'))
+      .map(id => loadModule(id))
+  ), cb);
 
   return requireModule;
 }
